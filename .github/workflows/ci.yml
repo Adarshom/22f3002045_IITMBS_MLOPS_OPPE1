@@ -1,3 +1,6 @@
+Here’s a clean, end-to-end workflow with safe indentation (no fragile heredocs). It uses a tiny temp script for the MLflow fetch step.
+
+```yaml
 name: ci
 on:
   push:
@@ -24,6 +27,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -86,9 +90,8 @@ jobs:
 
       - name: Fetch best model from MLflow Registry
         run: |
-          python - <<'PY'
-          
-import os, mlflow, json
+          cat > /tmp/fetch_best.py << 'PY'
+import os, json, mlflow
 mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI","file:./mlruns"))
 c = mlflow.tracking.MlflowClient()
 name = os.getenv("REGISTRY_MODEL_NAME","stock_5m_lr")
@@ -97,8 +100,9 @@ if not vers:
     raise SystemExit("No registered versions found")
 best = sorted(vers, key=lambda v: int(v.version))[-1]
 mlflow.artifacts.download_artifacts(artifact_uri=best.source, dst_path="models/registry_best")
-print(json.dumps({"model_version":best.version,"source":best.source}))
+print(json.dumps({"model_version": int(best.version), "source": best.source}))
 PY
+          python /tmp/fetch_best.py
 
       - name: CML Report
         env:
@@ -123,3 +127,4 @@ PY
             preds_v0.csv
             preds_v01.csv
             models/**
+```
