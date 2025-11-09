@@ -2,8 +2,5 @@
 mlruns/
 models/
 data/processed/
-*.pyc
 __pycache__/
-venv/
-venv/bin
-venv/include
+*.pyc
