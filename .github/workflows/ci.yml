@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   pull-requests: write
 
@@ -20,6 +20,7 @@ env:
   MLFLOW_TRACKING_URI: "file:./mlruns"
   MLFLOW_EXPERIMENT: "stock_5m"
   REGISTRY_MODEL_NAME: "stock_5m_lr"
+  PYTHONPATH: "${{ github.workspace }}"
 
 jobs:
   build:
@@ -42,7 +43,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
+          cache: "pip"
 
       - name: Install deps
         run: |
@@ -86,8 +87,8 @@ jobs:
 
       - name: Fetch best model from MLflow Registry
         run: |
-          python - <<'EOF'
-          import os, mlflow, json
+          cat > /tmp/fetch_best.py << 'EOF'
+          import os, json, mlflow
           mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI","file:./mlruns"))
           c = mlflow.tracking.MlflowClient()
           name = os.getenv("REGISTRY_MODEL_NAME","stock_5m_lr")
@@ -96,10 +97,12 @@ jobs:
               raise SystemExit("No registered versions found")
           best = sorted(vers, key=lambda v: int(v.version))[-1]
           mlflow.artifacts.download_artifacts(artifact_uri=best.source, dst_path="models/registry_best")
-          print(json.dumps({"model_version":best.version,"source":best.source}))
+          print(json.dumps({"model_version": int(best.version), "source": best.source}))
           EOF
+          python /tmp/fetch_best.py
 
-      - name: CML Report
+      - name: CML Report (PR comment)
+        if: github.event_name == 'pull_request'
         env:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -111,6 +114,17 @@ jobs:
           echo "### v01" >> report.md
           cat metrics_v01.json >> report.md || true
           npx cml comment create --publish report.md
+
+      - name: Attach report to Job Summary (push only)
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "# OPPE-1 CI Report" >> $GITHUB_STEP_SUMMARY
+          echo "## Metrics" >> $GITHUB_STEP_SUMMARY
+          echo "### v0" >> $GITHUB_STEP_SUMMARY
+          cat metrics_v0.json >> $GITHUB_STEP_SUMMARY || true
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### v01" >> $GITHUB_STEP_SUMMARY
+          cat metrics_v01.json >> $GITHUB_STEP_SUMMARY || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
