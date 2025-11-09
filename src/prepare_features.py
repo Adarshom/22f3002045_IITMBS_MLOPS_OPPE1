@@ -1,4 +1,4 @@
-import argparse, os, glob
+import argparse, os, glob, re
 import pandas as pd
 import yaml
 
@@ -6,52 +6,75 @@ def load_params(p="params.yaml"):
     with open(p) as f:
         return yaml.safe_load(f)
 
-def load_concat_csvs(folder):
+def _infer_stock_name_from_path(path: str) -> str:
+    base = os.path.basename(path)
+    # take token before first "__" or first dot as fallback
+    m = re.match(r"([^_]+)__", base)
+    return (m.group(1) if m else os.path.splitext(base)[0]).upper()
+
+def _read_and_standardize(path: str) -> pd.DataFrame:
+    """
+    Expect columns: timestamp, open, high, low, close, volume (as in your samples).
+    Add stock_name from filename. Parse tz-aware timestamps, convert to UTC (naive).
+    """
+    df = pd.read_csv(path)
+    # normalize headers
+    df.columns = [c.strip().lower() for c in df.columns]
+    required = {"timestamp", "close", "volume"}
+    missing = required - set(df.columns)
+    if missing:
+        raise KeyError(f"{os.path.basename(path)} missing columns: {missing}")
+
+    # timestamp: parse with timezone, convert to UTC, then drop tz to keep naive (stable for joins)
+    ts = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+    df["timestamp"] = ts.dt.tz_convert("UTC").dt.tz_localize(None)
+
+    # numeric coercion
+    for col in ("open", "high", "low", "close", "volume"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # add stock_name
+    df["stock_name"] = _infer_stock_name_from_path(path)
+
+    # drop duplicates & obvious bad rows
+    df = df.dropna(subset=["timestamp", "close"]).drop_duplicates(subset=["stock_name", "timestamp"])
+
+    return df[["timestamp", "stock_name", "close", "volume"]].copy()
+
+def load_concat_csvs(folder: str) -> pd.DataFrame:
     files = sorted(glob.glob(os.path.join(folder, "*.csv")))
     if not files:
         raise FileNotFoundError(f"No CSVs in {folder}")
-    dfs = []
+    parts = []
     for f in files:
-        df = pd.read_csv(f)
-        # Normalize columns if needed
-        df.columns = [c.strip().lower() for c in df.columns]
-        # expected: timestamp, open, high, low, close, volume, stock_name
-        # allow 'symbol' as alias for stock_name
-        if "stock_name" not in df.columns and "symbol" in df.columns:
-            df["stock_name"] = df["symbol"]
-        dfs.append(df)
-    return pd.concat(dfs, ignore_index=True)
+        parts.append(_read_and_standardize(f))
+    return pd.concat(parts, ignore_index=True)
 
-def build_features(df, cfg):
-    tcol = cfg["features"]["time_col"]
-    ccol = cfg["features"]["close_col"]
-    vcol = cfg["features"]["volume_col"]
-    scol = cfg["features"]["stock_col"]
+def build_features(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """
+    Features:
+      - rolling_avg_10 over close (last 10 available points)
+      - volume_sum_10 over volume (last 10 available points)
+      - keep raw close, volume, stock_name
+    Target:
+      - will_up_in_5m := 1 if close(t+5) > close(t), else 0
+    """
     w = int(cfg["features"]["roll_window"])
     h = int(cfg["features"]["horizon_min"])
     target_col = cfg["features"]["target_col"]
 
-    # type & ordering
-    df[tcol] = pd.to_datetime(df[tcol])
-    # bring back canonical case for columns we’ll output
-    df.rename(columns={
-        tcol: "timestamp",
-        ccol: "close",
-        vcol: "volume",
-        scol: "stock_name"
-    }, inplace=True)
-    df = df.sort_values(["stock_name", "timestamp"])
+    df = df.sort_values(["stock_name", "timestamp"]).copy()
 
-    # group-wise rolling; "last 10 available points" -> min_periods=1
     g = df.groupby("stock_name", group_keys=False)
     df["rolling_avg_10"] = g["close"].rolling(window=w, min_periods=1).mean().reset_index(level=0, drop=True)
     df["volume_sum_10"] = g["volume"].rolling(window=w, min_periods=1).sum().reset_index(level=0, drop=True)
 
-    # future close at t+5 within each stock
+    # t+5 future comparison within each stock
     future_close = g["close"].shift(-h)
     df[target_col] = (future_close > df["close"]).astype("Int64")
 
-    # drop tail rows with no future label
+    # drop rows where we cannot form a label (tail)
     df = df.dropna(subset=[target_col])
 
     keep = ["timestamp", "stock_name", "close", "volume", "rolling_avg_10", "volume_sum_10", target_col]
@@ -77,6 +100,7 @@ def main():
         v1 = load_concat_csvs(args.v1)
         both = pd.concat([v0, v1], ignore_index=True)
         feats_v01 = build_features(both, cfg)
+        os.makedirs(os.path.dirname(args.out_v01), exist_ok=True)
         feats_v01.to_parquet(args.out_v01, index=False)
 
 if __name__ == "__main__":
