@@ -1,0 +1,49 @@
+stages:
+  prepare:
+    cmd: >
+      python -m src.prepare_features
+      --v0 ${data.v0_dir}
+      --v1 ${data.v1_dir}
+      --out_v0 ${data.feats_v0}
+      --out_v01 ${data.feats_v01}
+      --params params.yaml
+    deps:
+      - src/prepare_features.py
+      - ${data.v0_dir}
+      - ${data.v1_dir}
+      - params.yaml
+    outs:
+      - ${data.feats_v0}
+      - ${data.feats_v01}
+
+  train_v0:
+    cmd: >
+      python -m src.train
+      --dataset ${data.feats_v0}
+      --model_out ${outputs.model_v0}
+      --metrics_out ${outputs.metrics_v0}
+      --tag v0
+    deps:
+      - src/train.py
+      - ${data.feats_v0}
+      - params.yaml
+    outs:
+      - ${outputs.model_v0}
+    metrics:
+      - ${outputs.metrics_v0}
+
+  train_v01:
+    cmd: >
+      python -m src.train
+      --dataset ${data.feats_v01}
+      --model_out ${outputs.model_v01}
+      --metrics_out ${outputs.metrics_v01}
+      --tag v01
+    deps:
+      - src/train.py
+      - ${data.feats_v01}
+      - params.yaml
+    outs:
+      - ${outputs.model_v01}
+    metrics:
+      - ${outputs.metrics_v01}

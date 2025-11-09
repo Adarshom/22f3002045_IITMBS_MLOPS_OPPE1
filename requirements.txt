@@ -1,0 +1,8 @@
+dvc[gcs]
+mlflow
+scikit-learn
+pandas
+pyarrow
+pytest
+joblib
+yaml

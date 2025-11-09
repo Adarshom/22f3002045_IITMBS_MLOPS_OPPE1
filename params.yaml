@@ -1,0 +1,31 @@
+data:
+  v0_dir: data/raw/v0
+  v1_dir: data/raw/v1
+  feats_v0: data/processed/features_v0.parquet
+  feats_v01: data/processed/features_v01.parquet
+
+features:
+  horizon_min: 5            # predict t+5 vs t
+  roll_window: 10           # last 10 minutes
+  target_col: will_up_in_5m
+  time_col: timestamp
+  close_col: close
+  volume_col: volume
+  stock_col: stock_name
+
+train:
+  test_size: 0.2
+  random_state: 42
+  lr:
+    C: 1.0
+    max_iter: 200
+
+mlflow:
+  uri: file:./mlruns
+  experiment: stock_5m
+
+outputs:
+  model_v0: models/model_v0.joblib
+  model_v01: models/model_v01.joblib
+  metrics_v0: metrics_v0.json
+  metrics_v01: metrics_v01.json
