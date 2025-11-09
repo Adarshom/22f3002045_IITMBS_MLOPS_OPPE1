@@ -7,3 +7,4 @@ __pycache__/
 /metrics_v0.json
 /metrics_v01.json
 data/feast/registry.db
+venv/
