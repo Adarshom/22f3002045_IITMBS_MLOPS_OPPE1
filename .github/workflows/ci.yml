@@ -1,25 +1,29 @@
 name: ci
 on:
-  push: { branches: [ main ] }
+  push:
+    branches: [ main ]
   pull_request: {}
+  workflow_dispatch: {}
 
 permissions:
   contents: read
-  id-token: write   # needed for google-github-actions/auth
-  pull-requests: write  # allow CML to comment
+  id-token: write
+  pull-requests: write
+
+defaults:
+  run:
+    shell: bash
 
 env:
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT }}
   GCP_REGION: ${{ vars.GCP_REGION }}
-  # Use filesystem artifacts in-repo; UI can point to absolute path during demos
-  MLFLOW_TRACKING_URI: file:./mlruns
-  MLFLOW_EXPERIMENT: stock_5m
-  REGISTRY_MODEL_NAME: stock_5m_lr
+  MLFLOW_TRACKING_URI: "file:./mlruns"
+  MLFLOW_EXPERIMENT: "stock_5m"
+  REGISTRY_MODEL_NAME: "stock_5m_lr"
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,17 +48,15 @@ jobs:
         run: |
           pip install -U pip
           pip install -r requirements.txt
-          pip install dvc-gs feast cml
+          pip install dvc-gs feast
+          npm i -g @dvcorg/cml
 
-      # --- Data from DVC (GCS remote via ADC) ---
       - name: DVC pull
         run: dvc pull -v
 
-      # --- Tests (include at least one sanity test per feature) ---
       - name: Run tests
         run: pytest -q
 
-      # --- Build engineered features (v0 and v0+v1) ---
       - name: Build features
         run: |
           python -m src.prepare_features \
@@ -62,32 +64,26 @@ jobs:
             --out_v0 data/processed/features_v0.parquet \
             --out_v01 data/processed/features_v01.parquet
 
-      # --- Train on v0 ---
       - name: Train v0
         run: |
-          PREDICTIONS_OUT=preds_v0.csv \
-          python -m src.train \
+          PREDICTIONS_OUT=preds_v0.csv python -m src.train \
             --dataset data/processed/features_v0.parquet \
             --model_out models/model_v0.joblib \
             --metrics_out metrics_v0.json \
             --tag v0
 
-      # --- Train on v01 + HPO + register best ---
       - name: Train v01 + HPO + Register best
         run: |
-          PREDICTIONS_OUT=preds_v01.csv \
-          python -m src.train \
+          PREDICTIONS_OUT=preds_v01.csv python -m src.train \
             --dataset data/processed/features_v01.parquet \
             --model_out models/model_v01.joblib \
             --metrics_out metrics_v01.json \
             --tag v01
           python -m src.hpo_and_register
 
-      # --- Feast apply (uses merged parquet) ---
       - name: Feast apply
         run: feast -c features apply
 
-      # --- Fetch latest registered model artifact locally ---
       - name: Fetch best model from MLflow Registry
         run: |
           python - <<'PY'
@@ -103,7 +99,6 @@ mlflow.artifacts.download_artifacts(artifact_uri=best.source, dst_path="models/r
 print(json.dumps({"model_version":best.version,"source":best.source}))
 PY
 
-      # --- CML report back to the PR (metrics snapshot) ---
       - name: CML Report
         env:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -112,6 +107,18 @@ PY
           echo "## Metrics" >> report.md
           echo "### v0" >> report.md
           cat metrics_v0.json >> report.md || true
-          echo "\n### v01" >> report.md
+          echo "" >> report.md
+          echo "### v01" >> report.md
           cat metrics_v01.json >> report.md || true
           npx cml comment create --publish report.md
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-outputs
+          path: |
+            metrics_v0.json
+            metrics_v01.json
+            preds_v0.csv
+            preds_v01.csv
+            models/**
