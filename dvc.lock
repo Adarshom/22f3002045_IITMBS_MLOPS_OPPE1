@@ -1,0 +1,83 @@
+schema: '2.0'
+stages:
+  prepare:
+    cmd: "python -m src.prepare_features --v0 data/v0 --v1 data/v1 --out_v0 data/processed/features_v0.parquet
+      --out_v01 data/processed/features_v01.parquet --params params.yaml\n"
+    deps:
+    - path: data/v0
+      hash: md5
+      md5: 6c68206ad5d6a56e0dd55d46ec549331.dir
+      size: 38635327
+      nfiles: 2
+    - path: data/v1
+      hash: md5
+      md5: c4971e8d8f7931e534e97cae1af8bf8b.dir
+      size: 54712518
+      nfiles: 3
+    - path: params.yaml
+      hash: md5
+      md5: 7e3a828379b55978c574e64adbe5075e
+      size: 570
+    - path: src/prepare_features.py
+      hash: md5
+      md5: d8b4b756da42a3f4e6ea7a57d05c9d4a
+      size: 4020
+    outs:
+    - path: data/processed/features_v0.parquet
+      hash: md5
+      md5: 5497b2e2b316e45f9c51b7473c6ef04b
+      size: 12491539
+    - path: data/processed/features_v01.parquet
+      hash: md5
+      md5: fc1a69e8dbd91a169a832dbe28405bd4
+      size: 30891047
+  train_v0:
+    cmd: "python -m src.train --dataset data/processed/features_v0.parquet --model_out
+      models/model_v0.joblib --metrics_out metrics_v0.json --tag v0\n"
+    deps:
+    - path: data/processed/features_v0.parquet
+      hash: md5
+      md5: 5497b2e2b316e45f9c51b7473c6ef04b
+      size: 12491539
+    - path: params.yaml
+      hash: md5
+      md5: 7e3a828379b55978c574e64adbe5075e
+      size: 570
+    - path: src/train.py
+      hash: md5
+      md5: f5dcc4e28dfc874b82dcffcb9e0971e9
+      size: 3560
+    outs:
+    - path: metrics_v0.json
+      hash: md5
+      md5: 008a55b00b93c49432659ce83c3d38f4
+      size: 106
+    - path: models/model_v0.joblib
+      hash: md5
+      md5: 8f0c4e3edb64fc817f047ae459b350d4
+      size: 1921
+  train_v01:
+    cmd: "python -m src.train --dataset data/processed/features_v01.parquet --model_out
+      models/model_v01.joblib --metrics_out metrics_v01.json --tag v01\n"
+    deps:
+    - path: data/processed/features_v01.parquet
+      hash: md5
+      md5: fc1a69e8dbd91a169a832dbe28405bd4
+      size: 30891047
+    - path: params.yaml
+      hash: md5
+      md5: 7e3a828379b55978c574e64adbe5075e
+      size: 570
+    - path: src/train.py
+      hash: md5
+      md5: f5dcc4e28dfc874b82dcffcb9e0971e9
+      size: 3560
+    outs:
+    - path: metrics_v01.json
+      hash: md5
+      md5: 2185351a0d2645de7fc28acd66560061
+      size: 107
+    - path: models/model_v01.joblib
+      hash: md5
+      md5: 688d57e95706ce65fabd08ef847b1ca1
+      size: 2049
