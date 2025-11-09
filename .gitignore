@@ -6,3 +6,4 @@ __pycache__/
 *.pyc
 /metrics_v0.json
 /metrics_v01.json
+data/feast/registry.db
