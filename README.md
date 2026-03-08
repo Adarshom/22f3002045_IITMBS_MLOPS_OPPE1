@@ -1,8 +1,3 @@
-Perfect — here’s a **detailed, production-grade `README.md`** tailored to your MLOps project based on everything we’ve set up and discussed (MLflow tracking, DVC, GCP integration, CI/CD, etc.).
-
----
-
-````markdown
 # OPPE-1: MLOps Pipeline for Stock 5M Prediction
 
 ## 📘 Overview
@@ -220,10 +215,3 @@ data/processed/
 * CI generates automated reports and artifacts for review.
 
 ---
-
-## 🧭 Next Steps
-
-* Containerize model inference with Docker.
-* Deploy via Cloud Run or Vertex AI.
-* Automate model promotion via MLflow Model Registry.
-
